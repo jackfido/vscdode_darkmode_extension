@@ -1,8 +1,8 @@
 {
   "name": "theme",
   "displayName": "VSCODE DARKMODE",
-  "description": "change vs code theme related to time ",
-  "version": "0.0.9",
+  "description": "change vs code theme related to time or to the GNOME dark/light mode",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.48.0"
   },
@@ -32,6 +32,19 @@
     "configuration": {
       "title": "VSCODE DARKMODE",
       "properties": {
+        "vscode_darkmode.mode": {
+          "type": "string",
+          "enum": [
+            "time",
+            "gnome"
+          ],
+          "default": "time",
+          "enumDescriptions": [
+            "Switch theme using the day/night hours.",
+            "Follow the GNOME dark/light setting (org.gnome.desktop.interface), e.g. controlled by an automatic theme switcher extension. Linux only."
+          ],
+          "description": "How to decide between the dark and the light theme."
+        },
         "vscode_darkmode.dark": {
           "type": "string",
           "default": "Visual Studio Dark",
@@ -66,7 +79,7 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "yarn run compile",
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "lint": "eslint src --ext ts",
     "watch": "tsc -watch -p ./",

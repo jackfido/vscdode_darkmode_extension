@@ -1,123 +1,178 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import { time } from "console";
+import { execFile, spawn } from "child_process";
 
-type MyVariables = string | undefined | number;
-let clock;
-let configuration = vscode.workspace.getConfiguration("workbench");
-let workspaceTheme: MyVariables = vscode.workspace.getConfiguration("workbench").get("colorTheme");
-let selectedDarkTheme: MyVariables = vscode.workspace.getConfiguration("vscode_darkmode").get("dark");
-let selectedLightTheme: MyVariables = vscode.workspace.getConfiguration("vscode_darkmode").get("light");
-let selectedTimeDay: MyVariables = vscode.workspace.getConfiguration("vscode_darkmode").get("day");
-let selectedTimeNight: MyVariables = vscode.workspace.getConfiguration("vscode_darkmode").get("night");
+type Mode = "time" | "gnome";
 
-// AM - PM
+const GNOME_SCHEMA = "org.gnome.desktop.interface";
 
-// Detect Time Changing in every  seconds
-console.log(workspaceTheme);
-console.log(selectedDarkTheme);
+// ---------------------------------------------------------------------------
+// Settings helpers
+// ---------------------------------------------------------------------------
 
-// Pop Up
-
-let messages = ["https://twitter.com/KccEnes"];
-var themeInterval: any;
-vscode.window
-  .showInformationMessage(
-    "Thank You for installed vscode dark mode. Do you have any idea ? Feel free to contact with me",
-    ...messages
-  )
-  .then((selection) => {
-    if (selection === "https://twitter.com/KccEnes") {
-      vscode.env.openExternal(vscode.Uri.parse("https://twitter.com/KccEnes"));
-    }
-  });
-// vscode.workspace.getConfiguration().update("vscode_darkmode.dark", "light", vscode.ConfigurationTarget.Global);
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
-// vscode.extensions.all.forEach((ext) => {
-//   const ThemeExtension = ext.packageJSON.contributes
-//     ? ext.packageJSON.contributes.themes
-//       ? ext.packageJSON.contributes.themes
-//       : undefined
-//     : undefined;
-//   if (ThemeExtension) {
-//     for (var i = 0; i < ThemeExtension.length; i++) {
-//       const themeName = ThemeExtension[i].label;
-//       console.log(themeName);
-//     }
-//   }
-// });
-
-export function activate(context: vscode.ExtensionContext) {
-  function setTheme() {
-    workspaceTheme = vscode.workspace.getConfiguration("workbench").get("colorTheme");
-    selectedDarkTheme = vscode.workspace.getConfiguration("vscode_darkmode").get("dark");
-    selectedLightTheme = vscode.workspace.getConfiguration("vscode_darkmode").get("light");
-    selectedTimeDay = vscode.workspace.getConfiguration("vscode_darkmode").get("day");
-    selectedTimeNight = vscode.workspace.getConfiguration("vscode_darkmode").get("night");
-
-    clock = new Date().getHours();
-    if (selectedTimeDay !== undefined && selectedTimeNight !== undefined) {
-      if (
-        ((24 >= clock && clock > selectedTimeNight) || (clock >= 0 && selectedTimeDay > clock)) &&
-        selectedDarkTheme !== workspaceTheme
-      ) {
-        configuration.update("colorTheme", selectedDarkTheme, vscode.ConfigurationTarget.Global);
-      } else if (clock <= selectedTimeNight && clock > selectedTimeDay && selectedLightTheme !== workspaceTheme) {
-        configuration.update("colorTheme", selectedLightTheme, vscode.ConfigurationTarget.Global);
-      } else {
-        return;
-      }
-    }
-  }
-
-  themeInterval = setInterval(setTheme, 1000);
-  // Fire when plugin enabled
-
-  // commands
-
-  const stop_darkmode = "vscode_darkmode.stop";
-  const start_darkmode = "vscode_darkmode.start";
-
-  // subscribe commands
-
-  function stop_darkmode_func() {
-    clearInterval(themeInterval);
-  }
-
-  function start_darkmode_func() {
-    themeInterval = setInterval(setTheme, 1000);
-  }
-
-  // Add commands
-
-  context.subscriptions.push(vscode.commands.registerCommand(stop_darkmode, stop_darkmode_func));
-  context.subscriptions.push(vscode.commands.registerCommand(start_darkmode, start_darkmode_func));
-
-  //
-
-  selectedDarkTheme = vscode.workspace.getConfiguration("vscode_darkmode").get("dark");
-  selectedLightTheme = vscode.workspace.getConfiguration("vscode_darkmode").get("light");
-  selectedTimeDay = vscode.workspace.getConfiguration("vscode_darkmode").get("day");
-  selectedTimeNight = vscode.workspace.getConfiguration("vscode_darkmode").get("night");
-
-  clock = new Date().getHours();
-  if (selectedTimeDay !== undefined && selectedTimeNight !== undefined) {
-    if ((24 >= clock && clock > selectedTimeNight) || (clock >= 0 && selectedTimeDay > clock)) {
-      configuration.update("colorTheme", selectedDarkTheme, vscode.ConfigurationTarget.Global);
-    } else if (clock <= selectedTimeNight && clock > selectedTimeDay) {
-      configuration.update("colorTheme", selectedLightTheme, vscode.ConfigurationTarget.Global);
-    }
-  }
-
-  // Use the console to output diagnostic information (console.log) and errors (console.error)
-  // This line of code will only be executed once when your extension is activated
-
-  // The command has been defined in the package.json file
-  // Now provide the implementation of the command with registerCommand
-  // The commandId parameter must match the command field in package.json
+function settings() {
+  return vscode.workspace.getConfiguration("vscode_darkmode");
 }
 
-// this method is called when your extension is deactivated
+function getMode(): Mode {
+  return settings().get<string>("mode") === "gnome" ? "gnome" : "time";
+}
+
+function applyTheme(isDark: boolean) {
+  const target = isDark ? settings().get<string>("dark") : settings().get<string>("light");
+  const workbench = vscode.workspace.getConfiguration("workbench");
+  if (target && workbench.get("colorTheme") !== target) {
+    workbench.update("colorTheme", target, vscode.ConfigurationTarget.Global);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mode "time": same behaviour as before (day / night hours)
+// ---------------------------------------------------------------------------
+
+function isDarkByTime(): boolean | undefined {
+  const day = Number(settings().get("day"));
+  const night = Number(settings().get("night"));
+  if (Number.isNaN(day) || Number.isNaN(night)) {
+    return undefined;
+  }
+  const clock = new Date().getHours();
+  if (clock > night || clock < day) {
+    return true;
+  }
+  if (clock <= night && clock > day) {
+    return false;
+  }
+  return undefined; // clock === day: keep whatever is active
+}
+
+function startTimeMode(): vscode.Disposable {
+  const tick = () => {
+    const dark = isDarkByTime();
+    if (dark !== undefined) {
+      applyTheme(dark);
+    }
+  };
+  tick();
+  // The hour only matters once in a while, no need to poll every second.
+  const interval = setInterval(tick, 30 * 1000);
+  return new vscode.Disposable(() => clearInterval(interval));
+}
+
+// ---------------------------------------------------------------------------
+// Mode "gnome": follow org.gnome.desktop.interface (color-scheme / gtk-theme)
+// This is what "Night Theme Switcher", "Auto Theme Switcher" and similar
+// GNOME Shell extensions change, as well as Settings > Appearance.
+// ---------------------------------------------------------------------------
+
+function gsettingsGet(key: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("gsettings", ["get", GNOME_SCHEMA, key], (err, stdout) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(stdout.trim().replace(/^'|'$/g, ""));
+      }
+    });
+  });
+}
+
+async function isGnomeDark(): Promise<boolean> {
+  const scheme = await gsettingsGet("color-scheme").catch(() => "default");
+  if (scheme === "prefer-dark") {
+    return true;
+  }
+  if (scheme === "prefer-light") {
+    return false;
+  }
+  // "default": some setups only switch the GTK theme (e.g. Adwaita-dark)
+  const gtkTheme = await gsettingsGet("gtk-theme").catch(() => "");
+  return /dark/i.test(gtkTheme);
+}
+
+function startGnomeMode(output: vscode.OutputChannel): vscode.Disposable {
+  if (process.platform !== "linux") {
+    vscode.window.showWarningMessage('VSCODE DARKMODE: mode "gnome" only works on Linux. Falling back to time mode.');
+    return startTimeMode();
+  }
+
+  const sync = async () => {
+    try {
+      const dark = await isGnomeDark();
+      output.appendLine(`GNOME is ${dark ? "dark" : "light"}`);
+      applyTheme(dark);
+    } catch (e) {
+      output.appendLine(`Could not read GNOME settings: ${e}`);
+    }
+  };
+
+  sync();
+
+  // `gsettings monitor` prints a line every time a key of the schema changes.
+  const proc = spawn("gsettings", ["monitor", GNOME_SCHEMA]);
+  let buffer = "";
+  let debounce: NodeJS.Timeout | undefined;
+
+  proc.stdout.on("data", (chunk: Buffer) => {
+    buffer += chunk.toString();
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    if (lines.some((l) => /^(color-scheme|gtk-theme):/.test(l))) {
+      // switcher extensions often change several keys at once
+      if (debounce) {
+        clearTimeout(debounce);
+      }
+      debounce = setTimeout(sync, 200);
+    }
+  });
+  proc.on("error", (e) => {
+    output.appendLine(`gsettings monitor failed: ${e.message}`);
+    vscode.window.showWarningMessage(
+      "VSCODE DARKMODE: could not run `gsettings`. Is VS Code installed as Flatpak/Snap? See the output channel for details."
+    );
+  });
+
+  return new vscode.Disposable(() => {
+    if (debounce) {
+      clearTimeout(debounce);
+    }
+    proc.kill();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Activation
+// ---------------------------------------------------------------------------
+
+export function activate(context: vscode.ExtensionContext) {
+  const output = vscode.window.createOutputChannel("VSCODE DARKMODE");
+  context.subscriptions.push(output);
+
+  let active: vscode.Disposable | undefined;
+
+  const stop = () => {
+    if (active) {
+      active.dispose();
+      active = undefined;
+    }
+  };
+
+  const start = () => {
+    stop();
+    active = getMode() === "gnome" ? startGnomeMode(output) : startTimeMode();
+  };
+
+  context.subscriptions.push(
+    new vscode.Disposable(stop),
+    vscode.commands.registerCommand("vscode_darkmode.stop", stop),
+    vscode.commands.registerCommand("vscode_darkmode.start", start),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("vscode_darkmode") && active) {
+        start();
+      }
+    })
+  );
+
+  start();
+}
+
 export function deactivate() {}

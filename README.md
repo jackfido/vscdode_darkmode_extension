@@ -12,7 +12,12 @@
 
 ### Day Time : "vscode_darkmode.day" : time > number
 
-### Night Time : "vscode_darkmode.day" : time > number
+### Night Time : "vscode_darkmode.night" : time > number
+
+### Mode : "vscode_darkmode.mode" : "time" | "gnome" > string
+
+- `time` (default): switches by `day` / `night` hours.
+- `gnome`: follows the GNOME dark/light setting (`org.gnome.desktop.interface` `color-scheme`), so it stays in sync with Settings > Appearance or any automatic theme switcher extension. Linux only, requires `gsettings` (not reachable from Flatpak/Snap installs without extra permissions).
 
 ## EXAMPLE USAGE
 
@@ -24,6 +29,16 @@
   "vscode_darkmode.light": "Visual Studio Light",
   "vscode_darkmode.day": 12, // define day start time
   "vscode_darkmode.night": 12 // define night start time
+}
+```
+
+## GNOME example
+
+```json
+{
+  "vscode_darkmode.mode": "gnome",
+  "vscode_darkmode.dark": "Default Dark Modern",
+  "vscode_darkmode.light": "Default Light Modern"
 }
 ```
 
